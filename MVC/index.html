@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>茅 vs 春</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:#101a0b;color:#fff;padding:12px;
+    font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex;justify-content:center;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #wrap{width:900px;max-width:100%;}
+  #hud{
+    display:flex;align-items:center;gap:8px;background:#2b4420;
+    padding:8px 10px;border-radius:12px 12px 0 0;
+    box-shadow:inset 0 -3px 0 rgba(0,0,0,.28);
+  }
+  .avatar{
+    width:48px;height:48px;border-radius:50%;object-fit:cover;
+    border:2px solid #ffd75e;background:#16240f;flex:0 0 auto;
+  }
+  .avatar.enemy{border-color:#ff6b6b;}
+  #sunBox{
+    display:flex;align-items:center;gap:5px;background:#f5e9c8;color:#3a2c10;
+    border-radius:8px;padding:4px 10px;font-weight:800;min-width:86px;
+    font-variant-numeric:tabular-nums;flex:0 0 auto;
+  }
+  #sunBox img{width:26px;height:26px;object-fit:contain;}
+  #cards{display:flex;gap:6px;flex:1;min-width:0;}
+  .card{
+    position:relative;width:60px;height:76px;background:#d9c18a;
+    border:2px solid #8a6f3c;border-radius:8px;cursor:pointer;
+    overflow:hidden;flex:0 0 auto;transition:transform .08s;
+  }
+  .card:active{transform:scale(.96);}
+  .card img{width:100%;height:54px;object-fit:contain;display:block;margin-top:2px;}
+  .card .cost{
+    position:absolute;bottom:0;left:0;right:0;text-align:center;
+    font-size:12px;font-weight:800;color:#2b1c00;background:#e8d5a5;
+    line-height:18px;
+  }
+  .card .cd{
+    position:absolute;left:0;right:0;top:0;height:0%;
+    background:rgba(0,0,0,.6);pointer-events:none;transition:height .1s linear;
+  }
+  .card.disabled{filter:grayscale(.75) brightness(.72);cursor:not-allowed;}
+  .card.selected{outline:3px solid #ffe066;box-shadow:0 0 14px #ffe066;}
+  #shovelBtn{
+    width:46px;height:46px;flex:0 0 auto;background:#3d5c2c;border:2px solid #6b8a52;
+    border-radius:8px;cursor:pointer;padding:2px;
+  }
+  #shovelBtn.active{outline:3px solid #ffe066;box-shadow:0 0 12px #ffe066;}
+  #shovelBtn img{width:100%;height:100%;object-fit:contain;}
+  #timerBox{
+    background:#16240f;padding:6px 10px;border-radius:8px;font-weight:800;
+    color:#b6f08a;white-space:nowrap;font-variant-numeric:tabular-nums;
+    flex:0 0 auto;font-size:14px;
+  }
+  #stage{position:relative;line-height:0;}
+  canvas{
+    display:block;width:100%;border-radius:0 0 12px 12px;background:#3a5f2a;
+    cursor:pointer;touch-action:none;
+  }
+  #overlay{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.75);border-radius:0 0 12px 12px;line-height:1.6;
+    text-align:center;padding:20px;backdrop-filter:blur(3px);
+  }
+  #overlay.show{display:flex;}
+  .ov-inner{max-width:560px;}
+  #overlay h1{margin:0 0 10px;font-size:30px;letter-spacing:2px;color:#c9f58e;}
+  #overlay p{margin:0 0 14px;color:#d8e6cd;font-size:15px;white-space:pre-line;}
+  #ovStats{font-size:15px;color:#ffe066;font-weight:700;margin-bottom:16px;white-space:pre-line;}
+  #ovBtn{
+    padding:11px 34px;font-size:17px;font-weight:800;cursor:pointer;
+    background:#7bc043;color:#12240a;border:none;border-radius:10px;
+    box-shadow:0 4px 0 #4e7f28;transition:.08s;
+  }
+  #ovBtn:active{transform:translateY(3px);box-shadow:0 1px 0 #4e7f28;}
+  @media(max-width:640px){
+    .card{width:48px;height:64px;}
+    .card img{height:44px;}
+    .avatar{width:38px;height:38px;}
+    #timerBox{font-size:12px;padding:5px 7px;}
+    #sunBox{min-width:64px;font-size:13px;padding:4px 6px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <img class="avatar" src="mao.png" alt="茅">
+    <div id="sunBox"><img src="sun.png" alt=""><span id="sunCount">100</span></div>
+    <div id="cards"></div>
+    <button id="shovelBtn" title="铲除植物"><img src="shovel.png" alt="铲"></button>
+    <div id="timerBox">存活 <span id="timer">0.0</span>s</div>
+    <img class="avatar enemy" src="chun.png" alt="春">
+  </div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="overlay">
+      <div class="ov-inner">
+        <h1 id="ovTitle">茅 vs 春</h1>
+        <p id="ovText"></p>
+        <div id="ovStats"></div>
+        <button id="ovBtn">开始防守</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   1. 资源清单
+   ========================================================= */
+const ASSETS = {
+  background:        'background.png',
+  sun:               'sun.png',
+  shovel:            'shovel.png',
+  pea:               'pea_maodou.png',
+  ice:               'pea_ice.png',
+  cup:               'water_cup.png',
+  mao:               'mao.png',
+  chun:              'chun.png',
+  plant_maodou:      'plant_maodou_shooter.png',
+  plant_xiangri:     'plant_xiangrimao.png',
+  plant_shuibei:     'plant_shuibei_tosser.png',
+  plant_maotouying:  'plant_maotouying.png',
+  plant_hanbing:     'plant_hanbing_shooter.png',
+  plant_maotong:     'plant_maotong_wall.png',
+  zombie_normal:     'zombie_chun_normal.png',
+  zombie_cone:       'zombie_chun_cone.png',
+  zombie_bucket:     'zombie_chun_bucket.png',
+  zombie_fast:       'zombie_chun_fast.png'
+};
+
+const IMG = {};
+function loadImage(src){
+  return new Promise(res=>{
+    const im = new Image();
+    im.onload  = ()=>res(im);
+    im.onerror = ()=>{ im.broken = true; res(im); };
+    im.src = src;
+  });
+}
+function ok(im){ return im && !im.broken && im.naturalWidth > 0; }
+
+/* =========================================================
+   2. 常量
+   ========================================================= */
+const CV = document.getElementById('cv');
+const ctx = CV.getContext('2d');
+const ROWS = 5;
+const CELL_W = 88, CELL_H = 104;
+const LAWN_X = 90, LAWN_Y = 40;
+const LAWN_W = 9 * CELL_W;
+const LAWN_H = ROWS * CELL_H;
+CV.width = 900; CV.height = 560;
+
+/* ★ 种植区：画面左侧 1/4 区域 */
+const PLANT_ZONE_RIGHT = CV.width / 4;     // 225
+const PLANT_MIN_X = 42;                    // 防止植物跑出画面左侧
+const PLANT_MAX_X = PLANT_ZONE_RIGHT;      // 225
+const PLANT_MIN_Y = LAWN_Y + 18;
+const PLANT_MAX_Y = LAWN_Y + LAWN_H - 4;
+
+/* 僵尸走到这里算攻破 */
+const ZOMBIE_GOAL_X = 8;
+
+const BEST_KEY = 'mao_vs_chun_best_time';
+
+/* =========================================================
+   3. 植物数据
+   ========================================================= */
+const PLANTS = {
+  maodou: {
+    key:'maodou', name:'毛豆射手', img:'plant_maodou',
+    cost:100, cooldown:7.5, hp:300,
+    kind:'shooter', interval:1.4, damage:20, projSpeed:520, proj:'pea',
+    fallback:'#63c24a'
+  },
+  xiangri: {
+    key:'xiangri', name:'向日茅', img:'plant_xiangri',
+    cost:50, cooldown:7.5, hp:300,
+    kind:'sun', interval:9, sunValue:25,
+    fallback:'#f2c94c'
+  },
+  shuibei: {
+    key:'shuibei', name:'水杯投手', img:'plant_shuibei',
+    cost:150, cooldown:8, hp:300,
+    kind:'lobber', interval:3.2, damage:45, splash:64,
+    fallback:'#4aa3df'
+  },
+  maotouying: {
+    key:'maotouying', name:'大嘴猫头鹰', img:'plant_maotouying',
+    cost:150, cooldown:12, hp:300,
+    kind:'shooter', interval:2.6, damage:60, projSpeed:600, proj:'word',
+    fallback:'#b06bd6'
+  },
+  hanbing: {
+    key:'hanbing', name:'寒冰射手', img:'plant_hanbing',
+    cost:150, cooldown:8, hp:300,
+    kind:'shooter', interval:1.4, damage:20, projSpeed:520, proj:'ice', slow:true,
+    fallback:'#6fd3ea'
+  },
+  maotong: {
+    key:'maotong', name:'茂桐墙', img:'plant_maotong',
+    cost:50, cooldown:15, hp:1500,
+    kind:'wall',
+    fallback:'#8b6f47'
+  }
+};
+const CARD_ORDER = ['maodou','xiangri','shuibei','maotouying','hanbing','maotong'];
+
+/* =========================================================
+   4. 僵尸数据
+   ========================================================= */
+const ZOMBIES = {
+  normal: { key:'normal', name:'春',       img:'zombie_normal', hp:200, speed:15, dps:30, w:66, h:96, fallback:'#7a9f5a' },
+  cone:   { key:'cone',   name:'路障春',   img:'zombie_cone',   hp:420, speed:15, dps:30, w:66, h:96, fallback:'#6e944f' },
+  bucket: { key:'bucket', name:'铁桶春',   img:'zombie_bucket', hp:820, speed:14, dps:34, w:68, h:98, fallback:'#5f7f45' },
+  fast:   { key:'fast',   name:'疾风春',   img:'zombie_fast',   hp:180, speed:35, dps:26, w:60, h:92, fallback:'#a8c96b' }
+};
+
+const WORD_POOL = ['啊','哇','哈','嘿','呀','哦','呜','喵','吼','嘎'];
+
+/* =========================================================
+   5. 状态
+   ========================================================= */
+let state = {
+  sun:100, time:0, running:false, over:false,
+  plants:[], zombies:[], projectiles:[], suns:[],
+  cooldowns:{}, selected:null,
+  spawnTimer:20, skySunTimer:5, nextWave:30, waveCount:0,
+  pending:[], best:0
+};
+let shovelMode = false;
+let mouseX = -999, mouseY = -999;
+
+/* 拖拽 */
+let dragPlant = null;
+let dragOffX = 0, dragOffY = 0;
+let dragOrigX = 0, dragOrigY = 0;
+
+/* =========================================================
+   6. 工具
+   ========================================================= */
+function rand(a,b){ return a + Math.random()*(b-a); }
+
+function rr(x,y,w,h,r){
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function drawAsset(img,x,y,w,h,fallback){
+  if (ok(img)){
+    ctx.drawImage(img,x,y,w,h);
+  }else{
+    ctx.fillStyle = fallback || '#7a7a7a';
+    rr(x,y,w,h,Math.min(w,h)*0.2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.font = 'bold ' + Math.round(Math.min(w,h)*0.32) + 'px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('?', x+w/2, y+h/2);
+  }
+}
+
+function loadBest(){
+  const v = parseFloat(localStorage.getItem(BEST_KEY));
+  return isNaN(v) ? 0 : v;
+}
+function saveBest(v){
+  try{ localStorage.setItem(BEST_KEY, v.toFixed(2)); }catch(e){}
+}
+
+/* =========================================================
+   7. 位置合法性
+   ========================================================= */
+function isValidPos(x, y, self){
+  if (x < PLANT_MIN_X || x > PLANT_MAX_X) return false;   // 只能在左侧 1/4 内
+  if (y < PLANT_MIN_Y || y > PLANT_MAX_Y) return false;
+  for (const p of state.plants){
+    if (p === self) continue;
+    const dx = (p.x - x) / 46;
+    const dy = (p.y - y) / 54;
+    if (dx*dx + dy*dy < 1) return false;  // 不能与其他植物过度重叠
+  }
+  return true;
+}
+
+function findPlantIndexAt(x, y){
+  for (let i = state.plants.length-1; i>=0; i--){
+    const p = state.plants[i];
+    if (Math.abs(p.x - x) < 42 && Math.abs(p.y + 6 - y) < 52) return i;
+  }
+  return -1;
+}
+
+/* =========================================================
+   8. 开局 / 结束
+   ========================================================= */
+function startGame(){
+  state = {
+    sun:100, time:0, running:true, over:false,
+    plants:[], zombies:[], projectiles:[], suns:[],
+    cooldowns:{ maodou:0, xiangri:0, shuibei:0, maotouying:0, hanbing:0, maotong:0 },
+    selected:null,
+    spawnTimer:8, skySunTimer:5, nextWave:30, waveCount:0,
+    pending:[], best:0
+  };
+  shovelMode = false;
+  dragPlant = null;
+  document.getElementById('shovelBtn').classList.remove('active');
+  document.getElementById('overlay').classList.remove('show');
+  updateHUD();
+}
+
+function gameOver(){
+  if (state.over) return;
+  state.over = true;
+  state.running = false;
+  const best = Math.max(loadBest(), state.time);
+  saveBest(best);
+  state.best = best;
+  showOverlay(
+    '茅的后庭被攻破了……',
+    '「春」走到了最左侧。再来一次，撑得更久一点！',
+    '本次存活：' + state.time.toFixed(1) + ' 秒\n历史最长存活：' + best.toFixed(1) + ' 秒',
+    '重新开始',
+    startGame
+  );
+}
+
+const overlayEl = document.getElementById('overlay');
+const ovTitle = document.getElementById('ovTitle');
+const ovText  = document.getElementById('ovText');
+const ovStats = document.getElementById('ovStats');
+const ovBtn   = document.getElementById('ovBtn');
+
+function showOverlay(title, text, stats, btnText, action){
+  ovTitle.textContent = title;
+  ovText.textContent  = text;
+  ovStats.textContent = stats || '';
+  ovBtn.textContent   = btnText;
+  ovBtn.onclick       = action;
+  overlayEl.classList.add('show');
+}
+
+/* =========================================================
+   9. 卡片 UI
+   ========================================================= */
+const cardEls = {};
+function buildCards(){
+  const box = document.getElementById('cards');
+  box.innerHTML = '';
+  CARD_ORDER.forEach(key=>{
+    const def = PLANTS[key];
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.title = def.name + '（' + def.cost + '阳光）';
+    el.innerHTML =
+      '<img src="' + ASSETS[def.img] + '" alt="" onerror="this.style.visibility=\'hidden\'">' +
+      '<div class="cost">' + def.cost + '</div>' +
+      '<div class="cd"></div>';
+    el.addEventListener('click', ()=>{
+      if (!state.running) return;
+      state.selected = (state.selected === key) ? null : key;
+      shovelMode = false;
+      document.getElementById('shovelBtn').classList.remove('active');
+      updateHUD();
+    });
+    box.appendChild(el);
+    cardEls[key] = el;
+  });
+}
+
+const sunCountEl = document.getElementById('sunCount');
+const timerEl    = document.getElementById('timer');
+
+function updateHUD(){
+  sunCountEl.textContent = state.sun;
+  timerEl.textContent = state.time.toFixed(1);
+  CARD_ORDER.forEach(key=>{
+    const el = cardEls[key];
+    if (!el) return;
+    const def = PLANTS[key];
+    const cdLeft = state.cooldowns[key] || 0;
+    const canAfford = state.sun >= def.cost;
+    const blocked = cdLeft > 0 || !canAfford;
+    el.classList.toggle('disabled', blocked && state.selected !== key);
+    el.classList.toggle('selected', state.selected === key);
+    el.querySelector('.cd').style.height = Math.min(100, cdLeft / def.cooldown * 100) + '%';
+  });
+}
+
+/* =========================================================
+   10. 生成逻辑
+   ========================================================= */
+function spawnZombie(){
+  const t = state.time;
+  const pool = [['normal',10]];
+  if (t > 20) pool.push(['cone',7]);
+  if (t > 45) pool.push(['bucket',5]);
+  if (t > 70) pool.push(['fast',6]);
+
+  let total = 0;
+  pool.forEach(p=>total += p[1]);
+  let r = Math.random()*total, type = 'normal';
+  for (let i=0;i<pool.length;i++){
+    r -= pool[i][1];
+    if (r <= 0){ type = pool[i][0]; break; }
+  }
+
+  const row = Math.floor(Math.random()*ROWS);
+  const def = ZOMBIES[type];
+  state.zombies.push({
+    type, row,
+    x: CV.width + 40,
+    y: LAWN_Y + row*CELL_H + CELL_H/2 + 8,
+    hp: def.hp, maxHp: def.hp,
+    slowTimer:0, hitFlash:0, walkT: Math.random()*10, eating:false
+  });
+}
+
+function spawnSkySun(){
+  const tx = rand(PLANT_MIN_X, PLANT_MAX_X);
+  const ty = rand(PLANT_MIN_Y, PLANT_MAX_Y);
+  state.suns.push({
+    x: tx, y: LAWN_Y - 60, targetY: ty,
+    vy: 0, value: 25, life: 13, born: 0
+  });
+}
+
+function spawnPlantSun(p){
+  state.suns.push({
+    x: p.x + rand(-18,18), y: p.y - 20, targetY: p.y + rand(6,30),
+    vy: 0, value: PLANTS[p.type].sunValue, life: 13, born: 0
+  });
+}
+
+function spawnLogic(dt){
+  state.spawnTimer -= dt;
+  if (state.spawnTimer <= 0){
+    const t = state.time;
+    state.spawnTimer = Math.max(3.0, 12.5 - t*0.035) * rand(0.88, 1.22);
+    spawnZombie();
+    if (t > 55 && Math.random() < 0.25) spawnZombie();
+  }
+  if (state.time >= state.nextWave){
+    state.nextWave += 40;
+    state.waveCount++;
+    const n = 3 + state.waveCount;
+    for (let i=0;i<n;i++) state.pending.push({ t: i*0.5 });
+  }
+  for (let i=state.pending.length-1;i>=0;i--){
+    state.pending[i].t -= dt;
+    if (state.pending[i].t <= 0){
+      spawnZombie();
+      state.pending.splice(i,1);
+    }
+  }
+  state.skySunTimer -= dt;
+  if (state.skySunTimer <= 0){
+    state.skySunTimer = rand(8,12);
+    spawnSkySun();
+  }
+}
+
+/* =========================================================
+   11. 更新（基于实际 y 距离，不再依赖格子行）
+   ========================================================= */
+
+/* 找植物右侧、y 接近的最近僵尸 */
+function nearestZombie(y, x){
+  let best = null, bestScore = Infinity;
+  for (const z of state.zombies){
+    if (z.hp <= 0) continue;
+    if (z.x < x - 10) continue;
+    const dy = Math.abs(z.y - y);
+    if (dy > 84) continue;              // y 距离太远，无视
+    const score = z.x + dy * 2;
+    if (score < bestScore){ bestScore = score; best = z; }
+  }
+  return best;
+}
+
+/* 是否有 y 接近、且在右侧的僵尸 */
+function hasZombieNear(y, x){
+  return nearestZombie(y, x) !== null;
+}
+
+function updatePlants(dt){
+  for (const p of state.plants){
+    if (p.hp <= 0) continue;
+    const def = PLANTS[p.type];
+    p.t += dt;
+
+    if (def.kind === 'shooter'){
+      p.cd -= dt;
+      if (p.cd <= 0 && hasZombieNear(p.y, p.x)){
+        p.cd = def.interval;
+        state.projectiles.push({
+          x: p.x + 26, y: p.y - 22,
+          vx: def.projSpeed, vy: 0,
+          damage: def.damage,
+          kind: def.proj, slow: !!def.slow,
+          life: 6, dead: false,
+          text: def.proj === 'word' ? WORD_POOL[(Math.random()*WORD_POOL.length)|0] : ''
+        });
+      }
+    }
+    else if (def.kind === 'sun'){
+      p.cd -= dt;
+      if (p.cd <= 0){
+        p.cd = def.interval;
+        spawnPlantSun(p);
+      }
+    }
+    else if (def.kind === 'lobber'){
+      p.cd -= dt;
+      if (p.cd <= 0){
+        const target = nearestZombie(p.y, p.x);
+        if (target){
+          p.cd = def.interval;
+          const sx = p.x + 8, sy = p.y - 40;
+          const T = 0.9, g = 900;
+          const vx = (target.x - sx) / T;
+          const vy = (target.y - 30 - sy - 0.5*g*T*T) / T;
+          state.projectiles.push({
+            x: sx, y: sy, vx: vx, vy: vy, g: g,
+            damage: def.damage, splash: def.splash,
+            kind: 'cup', slow:false, life: 5, dead:false, text:'',
+            rot: 0
+          });
+        }
+      }
+    }
+  }
+  state.plants = state.plants.filter(p => p.hp > 0);
+}
+
+function damageZombie(z, dmg, slow){
+  z.hp -= dmg;
+  z.hitFlash = 0.12;
+  if (slow) z.slowTimer = Math.max(z.slowTimer, 3);
+  if (z.hp <= 0) z.dead = true;
+}
+
+function updateZombies(dt){
+  for (const z of state.zombies){
+    if (z.hp <= 0) continue;
+    const def = ZOMBIES[z.type];
+
+    if (z.slowTimer > 0) z.slowTimer -= dt;
+    const speedMul = z.slowTimer > 0 ? 0.5 : 1;
+
+    /* 找要啃的植物：y 接近且在僵尸前方 */
+    let target = null;
+    for (const p of state.plants){
+      if (p.hp <= 0) continue;
+      const d = z.x - p.x;
+      if (d > -14 && d < 42 && Math.abs(z.y - p.y) < 58){
+        if (!target || p.x > target.x) target = p;
+      }
+    }
+
+    if (target){
+      z.eating = true;
+      target.hp -= def.dps * dt;
+    }else{
+      z.eating = false;
+      z.x -= def.speed * speedMul * dt;
+    }
+
+    if (z.hitFlash > 0) z.hitFlash -= dt;
+    z.walkT += dt * (z.eating ? 2.5 : 6) * speedMul;
+
+    /* 僵尸走到最左侧 → 攻破 */
+    if (z.x < ZOMBIE_GOAL_X){
+      gameOver();
+      return;
+    }
+  }
+  state.zombies = state.zombies.filter(z => z.hp > 0 && !z.dead);
+}
+
+function updateProjectiles(dt){
+  for (const pr of state.projectiles){
+    pr.x += pr.vx * dt;
+    if (pr.g !== undefined){
+      pr.vy += pr.g * dt;
+      pr.y += pr.vy * dt;
+      pr.rot += dt * 9;
+    }
+    pr.life -= dt;
+    if (pr.life <= 0){ pr.dead = true; continue; }
+
+    for (const z of state.zombies){
+      if (z.hp <= 0) continue;
+      const dx = Math.abs(z.x - pr.x);
+      const dy = Math.abs(z.y - pr.y);
+      if (dx < 34 && dy < 60){
+        damageZombie(z, pr.damage, pr.slow);
+        if (pr.splash){
+          for (const z2 of state.zombies){
+            if (z2 === z || z2.hp <= 0) continue;
+            if (Math.abs(z2.x - z.x) < pr.splash && Math.abs(z2.y - z.y) < 90){
+              damageZombie(z2, Math.round(pr.damage*0.5), pr.slow);
+            }
+          }
+        }
+        pr.dead = true;
+        break;
+      }
+    }
+    if (pr.x > CV.width + 100 || pr.y > CV.height + 100) pr.dead = true;
+  }
+  state.projectiles = state.projectiles.filter(p => !p.dead);
+}
+
+function updateSuns(dt){
+  for (const s of state.suns){
+    if (s.y < s.targetY){
+      s.vy += 220 * dt;
+      s.y += s.vy * dt;
+      if (s.y >= s.targetY){ s.y = s.targetY; s.vy = 0; }
+    }else{
+      s.born += dt;
+      if (s.born > s.life) s.dead = true;
+    }
+  }
+  state.suns = state.suns.filter(s => !s.dead);
+}
+
+function update(dt){
+  state.time += dt;
+
+  for (const k in state.cooldowns){
+    if (state.cooldowns[k] > 0){
+      state.cooldowns[k] = Math.max(0, state.cooldowns[k] - dt);
+    }
+  }
+
+  updatePlants(dt);
+  updateZombies(dt);
+  if (state.over) return;
+  updateProjectiles(dt);
+  updateSuns(dt);
+  spawnLogic(dt);
+  updateHUD();
+}
+
+/* =========================================================
+   12. 渲染
+   ========================================================= */
+function drawBackground(){
+  ctx.fillStyle = '#2f4a22';
+  ctx.fillRect(0,0,CV.width,CV.height);
+
+  if (ok(IMG.background)){
+    ctx.drawImage(IMG.background, 0, 0, CV.width, CV.height);
+  }else{
+    for (let r=0;r<ROWS;r++){
+      for (let c=0;c<9;c++){
+        ctx.fillStyle = (r % 2 === 0) ? '#5a9440' : '#4d8235';
+        ctx.fillRect(LAWN_X + c*CELL_W, LAWN_Y + r*CELL_H, CELL_W, CELL_H);
+      }
+    }
+    ctx.fillStyle = '#3a5a28';
+    ctx.fillRect(0,0,LAWN_X,CV.height);
+  }
+
+  /* ★ 左侧 1/4 种植区高亮 */
+  ctx.save();
+  ctx.fillStyle = 'rgba(140,255,120,0.10)';
+  ctx.fillRect(0, 0, PLANT_ZONE_RIGHT, CV.height);
+
+  ctx.strokeStyle = 'rgba(140,255,120,0.70)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  ctx.moveTo(PLANT_ZONE_RIGHT, 0);
+  ctx.lineTo(PLANT_ZONE_RIGHT, CV.height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillStyle = 'rgba(160,255,140,0.85)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('种 植 区', PLANT_ZONE_RIGHT/2, 22);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = 'rgba(180,255,160,0.65)';
+  ctx.fillText('（左侧 1/4）', PLANT_ZONE_RIGHT/2, 40);
+  ctx.restore();
+}
+
+function drawPlant(p){
+  const def = PLANTS[p.type];
+  const w = 76, h = 92;
+
+  ctx.fillStyle = 'rgba(0,0,0,.22)';
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y + 42, 27, 9, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  const breathe = def.kind === 'wall' ? 1 : 1 + Math.sin(p.t*3) * 0.018;
+  const dw = w * breathe, dh = h * breathe;
+
+  if (dragPlant === p){
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+  }
+  drawAsset(IMG[def.img], p.x - dw/2, p.y - dh/2 + 8, dw, dh, def.fallback);
+  if (dragPlant === p){
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = isValidPos(p.x, p.y, p) ? '#8dff6b' : '#ff5a5a';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7,5]);
+    ctx.strokeRect(p.x - 40, p.y - 48, 80, 96);
+    ctx.restore();
+  }
+
+  if (p.hp < p.maxHp){
+    const bw = 52, bh = 5;
+    const bx = p.x - bw/2, by = p.y - h/2 - 4;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(bx-1, by-1, bw+2, bh+2);
+    const ratio = Math.max(0, p.hp / p.maxHp);
+    ctx.fillStyle = ratio > 0.5 ? '#5ddc4a' : (ratio > 0.25 ? '#f5c542' : '#e8503a');
+    ctx.fillRect(bx, by, bw*ratio, bh);
+  }
+}
+
+function drawZombie(z){
+  const def = ZOMBIES[z.type];
+  const w = def.w, h = def.h;
+  const bob = z.eating ? Math.sin(z.walkT*8)*2 : Math.sin(z.walkT)*3;
+  const x = z.x - w/2;
+  const y = z.y - h/2 + bob;
+
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.beginPath();
+  ctx.ellipse(z.x, z.y + h/2 - 6, 24, 8, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  drawAsset(IMG[def.img], x, y, w, h, def.fallback);
+
+  if (z.slowTimer > 0){
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = '#7fe4ff';
+    rr(x, y, w, h, 12);
+    ctx.fill();
+    ctx.restore();
+  }
+  if (z.hitFlash > 0){
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.55, z.hitFlash*4);
+    ctx.fillStyle = '#ffffff';
+    rr(x, y, w, h, 12);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (z.hp < z.maxHp){
+    const bw = 46, bh = 5;
+    const bx = z.x - bw/2, by = y - 10;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(bx-1, by-1, bw+2, bh+2);
+    const ratio = Math.max(0, z.hp / z.maxHp);
+    ctx.fillStyle = ratio > 0.5 ? '#e8503a' : (ratio > 0.25 ? '#f5a742' : '#8b1e1e');
+    ctx.fillRect(bx, by, bw*ratio, bh);
+  }
+}
+
+function drawProjectile(pr){
+  if (pr.kind === 'pea'){
+    drawAsset(IMG.pea, pr.x-13, pr.y-13, 26, 26, '#63c24a');
+  }
+  else if (pr.kind === 'ice'){
+    drawAsset(IMG.ice, pr.x-13, pr.y-13, 26, 26, '#6fd3ea');
+  }
+  else if (pr.kind === 'cup'){
+    ctx.save();
+    ctx.translate(pr.x, pr.y);
+    ctx.rotate(pr.rot);
+    drawAsset(IMG.cup, -18, -18, 36, 36, '#4aa3df');
+    ctx.restore();
+  }
+  else if (pr.kind === 'word'){
+    ctx.save();
+    ctx.font = 'bold 30px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(pr.text, pr.x, pr.y);
+    ctx.fillStyle = '#a259d6';
+    ctx.fillText(pr.text, pr.x, pr.y);
+    ctx.restore();
+  }
+}
+
+function drawSun(s){
+  const pulse = 1 + Math.sin((s.born + s.x*0.02) * 5) * 0.06;
+  const size = 48 * pulse;
+  const fade = (s.born > s.life - 2.5) ? (0.4 + 0.6*Math.abs(Math.sin(s.born*6))) : 1;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  drawAsset(IMG.sun, s.x - size/2, s.y - size/2, size, size, '#ffd93b');
+  ctx.restore();
+}
+
+function render(){
+  drawBackground();
+
+  const drawList = [];
+  state.plants.forEach(p => drawList.push({ y: p.y, fn: ()=>drawPlant(p) }));
+  state.zombies.forEach(z => drawList.push({ y: z.y, fn: ()=>drawZombie(z) }));
+  drawList.sort((a,b)=>a.y-b.y);
+  drawList.forEach(d => d.fn());
+
+  state.projectiles.forEach(drawProjectile);
+  state.suns.forEach(drawSun);
+
+  /* 鼠标跟随预览 */
+  if (state.running && state.selected && mouseX > 0){
+    const def = PLANTS[state.selected];
+    const valid = isValidPos(mouseX, mouseY, null);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    drawAsset(IMG[def.img], mouseX-38, mouseY-46+8, 76, 92, def.fallback);
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = valid ? 'rgba(140,255,110,0.9)' : 'rgba(255,90,90,0.9)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7,5]);
+    ctx.strokeRect(mouseX-40, mouseY-48, 80, 96);
+    ctx.restore();
+  }
+}
+
+/* =========================================================
+   13. 循环
+   ========================================================= */
+let lastTs = 0;
+function loop(ts){
+  if (!lastTs) lastTs = ts;
+  let dt = (ts - lastTs) / 1000;
+  lastTs = ts;
+  if (dt > 0.05) dt = 0.05;
+  if (dt < 0) dt = 0;
+
+  if (state.running && !state.over) update(dt);
+  else updateHUD();
+
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* =========================================================
+   14. 交互（自由摆放 + 拖拽调整，种植区限制在左侧 1/4）
+   ========================================================= */
+function toCanvas(e){
+  const r = CV.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (CV.width / r.width),
+    y: (e.clientY - r.top)  * (CV.height / r.height)
+  };
+}
+
+function tryPlacePlant(x, y, key){
+  const def = PLANTS[key];
+  if (state.cooldowns[key] > 0) return false;
+  if (state.sun < def.cost) return false;
+  if (!isValidPos(x, y, null)) return false;
+
+  state.plants.push({
+    type: key,
+    x: x, y: y,
+    hp: def.hp, maxHp: def.hp,
+    cd: def.kind === 'sun' ? 5 : 0.5,
+    t: Math.random()*6
+  });
+
+  state.sun -= def.cost;
+  state.cooldowns[key] = def.cooldown;
+  state.selected = null;
+  updateHUD();
+  return true;
+}
+
+CV.addEventListener('pointerdown', e=>{
+  if (!state.running || state.over) return;
+  e.preventDefault();
+  const p = toCanvas(e);
+  mouseX = p.x; mouseY = p.y;
+
+  /* 1. 收阳光 */
+  for (let i=state.suns.length-1;i>=0;i--){
+    const s = state.suns[i];
+    if (Math.hypot(s.x-p.x, s.y-p.y) < 46){
+      state.sun += s.value;
+      state.suns.splice(i,1);
+      updateHUD();
+      return;
+    }
+  }
+
+  /* 2. 铲子 */
+  if (shovelMode){
+    const idx = findPlantIndexAt(p.x, p.y);
+    if (idx >= 0){
+      state.plants.splice(idx,1);
+      shovelMode = false;
+      document.getElementById('shovelBtn').classList.remove('active');
+    }
+    return;
+  }
+
+  /* 3. 抓起已有植物 → 拖拽调整 */
+  const idx = findPlantIndexAt(p.x, p.y);
+  if (idx >= 0){
+    dragPlant = state.plants[idx];
+    dragOrigX = dragPlant.x;
+    dragOrigY = dragPlant.y;
+    dragOffX = dragPlant.x - p.x;
+    dragOffY = dragPlant.y - p.y;
+    state.plants.splice(idx,1);
+    state.plants.push(dragPlant);
+    return;
+  }
+
+  /* 4. 种植新植物 */
+  if (state.selected){
+    tryPlacePlant(p.x, p.y, state.selected);
+  }
+});
+
+CV.addEventListener('pointermove', e=>{
+  const p = toCanvas(e);
+  mouseX = p.x; mouseY = p.y;
+
+  if (dragPlant){
+    let nx = p.x + dragOffX;
+    let ny = p.y + dragOffY;
+    nx = Math.max(0, Math.min(CV.width - 10, nx));
+    ny = Math.max(LAWN_Y + 6, Math.min(CV.height - 10, ny));
+    dragPlant.x = nx;
+    dragPlant.y = ny;
+  }
+});
+
+function endDrag(e){
+  if (dragPlant){
+    const p = toCanvas(e);
+    const nx = p.x + dragOffX;
+    const ny = p.y + dragOffY;
+
+    if (isValidPos(nx, ny, dragPlant)){
+      dragPlant.x = nx;
+      dragPlant.y = ny;
+    }else{
+      dragPlant.x = dragOrigX;
+      dragPlant.y = dragOrigY;
+    }
+    dragPlant = null;
+  }
+}
+
+CV.addEventListener('pointerup', e=>{
+  e.preventDefault();
+  endDrag(e);
+});
+
+CV.addEventListener('pointercancel', e=>{
+  if (dragPlant){
+    dragPlant.x = dragOrigX;
+    dragPlant.y = dragOrigY;
+    dragPlant = null;
+  }
+});
+
+CV.addEventListener('pointerleave', ()=>{
+  if (dragPlant){
+    dragPlant.x = dragOrigX;
+    dragPlant.y = dragOrigY;
+    dragPlant = null;
+  }
+  mouseX = -999; mouseY = -999;
+});
+
+document.getElementById('shovelBtn').addEventListener('click', function(){
+  if (!state.running) return;
+  shovelMode = !shovelMode;
+  state.selected = null;
+  this.classList.toggle('active', shovelMode);
+  updateHUD();
+});
+
+document.addEventListener('keydown', e=>{
+  if (e.key === 'Escape'){
+    state.selected = null;
+    shovelMode = false;
+    document.getElementById('shovelBtn').classList.remove('active');
+    if (dragPlant){
+      dragPlant.x = dragOrigX;
+      dragPlant.y = dragOrigY;
+      dragPlant = null;
+    }
+    updateHUD();
+  }
+});
+
+/* =========================================================
+   15. 启动
+   ========================================================= */
+Promise.all(
+  Object.keys(ASSETS).map(k => loadImage(ASSETS[k]).then(im => { IMG[k] = im; }))
+).then(()=>{
+  buildCards();
+  const best = loadBest();
+  showOverlay(
+    '茅 vs 春',
+    '植物只能种在左侧 1/4 的「种植区」内，但位置完全自由！\n' +
+    '点击卡片 → 点击种植区任意位置种植；\n' +
+    '按住植物拖动可随时调整位置。\n' +
+    '挡住「春」，别让它们走到最左边！',
+    best > 0 ? '历史最长存活：' + best.toFixed(1) + ' 秒' : '历史最长存活：——',
+    '开始防守',
+    startGame
+  );
+  updateHUD();
+  requestAnimationFrame(loop);
+});
+
+})();
+</script>
+</body>
+</html>
